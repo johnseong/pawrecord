@@ -270,6 +270,9 @@ function parseLocalDate(str) { const [y, m, d] = str.split("-").map(Number); ret
 function getDaysUntil(d) { if (!d) return 9999; const today = new Date(); today.setHours(0,0,0,0); return Math.ceil((parseLocalDate(d) - today) / 86400000); }
 function addMonths(dateStr, m) { const d = parseLocalDate(dateStr); d.setMonth(d.getMonth() + m); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
 function fmt(d) { if (!d) return "—"; return parseLocalDate(d).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }); }
+function localToday() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
+function getLastMedDate(med) { if (!med.history?.length) return med.startDate || null; return [...med.history].sort((a,b) => b.date.localeCompare(a.date))[0].date; }
+function getNextMedDue(med) { const last = getLastMedDate(med); if (!last) return null; return addMonths(last, parseInt(med.intervalMonths)||1); }
 
 function StatusBadge({ nextDue, size = "sm" }) {
   if (!nextDue) return null;
@@ -427,6 +430,7 @@ export default function PawRecord() {
   const [seriesTotals, setSeriesTotals] = useState(() => loadStorage("pr_series_totals", {}));
   const [customVaccines, setCustomVaccines] = useState(() => loadStorage("pr_custom_vaccines", SAMPLE_CUSTOM_VACCINES));
   const [hiddenVaccines, setHiddenVaccines] = useState(() => loadStorage("pr_hidden_vaccines", {}));
+  const [medications, setMedications] = useState(() => loadStorage("pr_medications", {}));
   const [showManageVaccines, setShowManageVaccines] = useState(false);
   const [newVaccineForm, setNewVaccineForm] = useState({ name: "", type: "Non-Core", description: "", boosterIntervalMonths: "12" });
   const [activePet, setActivePet] = useState(() => {
@@ -442,6 +446,7 @@ export default function PawRecord() {
   useEffect(() => { saveStorage("pr_series_totals", seriesTotals); }, [seriesTotals]);
   useEffect(() => { saveStorage("pr_custom_vaccines", customVaccines); }, [customVaccines]);
   useEffect(() => { saveStorage("pr_hidden_vaccines", hiddenVaccines); }, [hiddenVaccines]);
+  useEffect(() => { saveStorage("pr_medications", medications); }, [medications]);
   useEffect(() => { if (activePet) saveStorage("pr_activePetId", activePet.id); }, [activePet]);
   const [toast, setToast] = useState(null);
   const [notifStatus, setNotifStatus] = useState(() => notifPermission());
@@ -460,8 +465,13 @@ export default function PawRecord() {
   const [visitForm, setVisitForm] = useState({ date: "", vet: "", reason: "", notes: "", weight: "", medications: "", nextAppointment: "", cost: "" });
   const [newPet, setNewPet] = useState({ name: "", species: "Dog", breed: "", dob: "", weight: "", photo: "🐕", color: C.amber });
   const [logForm, setLogForm] = useState({ dose: "", date: "", vet: "", notes: "", nextDue: "" });
+  const [medModal, setMedModal] = useState(null); // null | "add-regular" | "add-onetime" | med-object (edit)
+  const [medForm, setMedForm] = useState({});
 
   const vaccines = getVaccineList(activePet?.species, customVaccines, hiddenVaccines);
+  const petMeds = medications[activePet?.id] || [];
+  const regularMeds = petMeds.filter(m => m.type === "regular");
+  const onetimeMeds = petMeds.filter(m => m.type === "onetime");
   const petHistory = history[activePet?.id] || {};
   const filteredVaccines = vaccines
     .filter(v => filterType === "All" ? true : v.type.startsWith(filterType))
@@ -497,7 +507,7 @@ export default function PawRecord() {
   }
 
   function exportData() {
-    const payload = { version: 2, exportedAt: new Date().toISOString(), pets, history, visits };
+    const payload = { version: 2, exportedAt: new Date().toISOString(), pets, history, visits, medications };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -522,6 +532,7 @@ export default function PawRecord() {
         setPets(data.pets);
         setHistory(data.history);
         setVisits(data.visits || {});
+        setMedications(data.medications || {});
         setActivePet(data.pets[0] ?? null);
         showToast(`Imported ${data.pets.length} pet(s) ✓`);
       } catch {
@@ -646,6 +657,30 @@ export default function PawRecord() {
     }));
   }
 
+  function gaveMedToday(medId) {
+    setMedications(m => ({ ...m, [activePet.id]: (m[activePet.id]||[]).map(med => med.id !== medId ? med : { ...med, history: [...(med.history||[]), { id: Date.now(), date: localToday() }] }) }));
+    showToast("Medication logged ✓");
+  }
+  function deleteMed(medId) {
+    if (!window.confirm("Delete this medication?")) return;
+    setMedications(m => ({ ...m, [activePet.id]: (m[activePet.id]||[]).filter(med => med.id !== medId) }));
+    showToast("Medication removed");
+  }
+  function saveMed() {
+    if (!medForm.name?.trim()) return;
+    const isNew = medModal === "add-regular" || medModal === "add-onetime";
+    if (isNew) {
+      const type = medModal === "add-regular" ? "regular" : "onetime";
+      const newMed = { id: Date.now(), type, ...medForm, name: medForm.name.trim(), history: [] };
+      setMedications(m => ({ ...m, [activePet.id]: [...(m[activePet.id]||[]), newMed] }));
+      showToast(`"${newMed.name}" added ✓`);
+    } else {
+      setMedications(m => ({ ...m, [activePet.id]: (m[activePet.id]||[]).map(med => med.id === medModal.id ? { ...med, ...medForm, name: medForm.name.trim() } : med) }));
+      showToast("Medication updated ✓");
+    }
+    setMedModal(null);
+  }
+
   function addPet() {
     if (!newPet.name || !newPet.dob) return;
     const id = Date.now();
@@ -700,7 +735,7 @@ export default function PawRecord() {
           </div>
           {/* ── Nav tabs ── */}
           <div style={{ display: "flex", gap: 2 }}>
-            {[["vaccines","💉 Vaccines"],["visits","🏥 Visits"],["schedule","📅 Schedule"],["summary","📊 Summary"]].map(([v, lbl]) => (
+            {[["vaccines","💉 Vaccines"],["visits","🏥 Visits"],["medications","💊 Meds"],["schedule","📅 Schedule"],["summary","📊 Summary"]].map(([v, lbl]) => (
               <button key={v} onClick={() => setView(v)} style={{ background: view === v ? C.cream : "transparent", color: view === v ? C.brown : C.muted, border: "none", borderRadius: "8px 8px 0 0", padding: "8px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>{lbl}</button>
             ))}
           </div>
@@ -789,6 +824,101 @@ export default function PawRecord() {
                     </div>
                   ))
                 }
+              </>
+            )}
+            {view === "medications" && (
+              <>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                  <h3 style={{ fontFamily: "'Playfair Display', serif", color: C.dark, fontSize: 18, margin: 0 }}>Medications — {activePet?.name}</h3>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <Btn onClick={() => { setMedForm({ name: "", intervalMonths: "1", startDate: localToday(), notes: "" }); setMedModal("add-regular"); }} style={{ padding: "7px 14px", fontSize: 12 }}>+ Regular</Btn>
+                    <Btn variant="secondary" onClick={() => { setMedForm({ name: "", startDate: localToday(), endDate: "", timesPerDay: "1", notes: "" }); setMedModal("add-onetime"); }} style={{ padding: "7px 14px", fontSize: 12 }}>+ One-time</Btn>
+                  </div>
+                </div>
+                {petMeds.length === 0 ? (
+                  <div style={{ background: "#FFF", borderRadius: 14, padding: 32, textAlign: "center", color: C.muted, boxShadow: "0 2px 8px rgba(61,32,16,0.06)" }}>
+                    <div style={{ fontSize: 32, marginBottom: 10 }}>💊</div>
+                    <div style={{ fontWeight: 600, marginBottom: 4, color: C.brown }}>No medications added yet</div>
+                    <div style={{ fontSize: 12 }}>Add a regular (monthly/quarterly) or one-time prescribed medication</div>
+                  </div>
+                ) : (
+                  <>
+                    {regularMeds.length > 0 && (
+                      <>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>🔄 Regular</div>
+                        {regularMeds.map(med => {
+                          const lastDate = getLastMedDate(med);
+                          const nextDue = getNextMedDue(med);
+                          const givenToday = lastDate === localToday();
+                          const intervalLabel = med.intervalMonths == 1 ? "Monthly" : med.intervalMonths == 3 ? "Every 3 months" : med.intervalMonths == 6 ? "Every 6 months" : "Annually";
+                          return (
+                            <div key={med.id} style={{ background: "#FFF", borderRadius: 14, padding: "18px 20px", marginBottom: 12, boxShadow: "0 2px 8px rgba(61,32,16,0.06)", borderLeft: `4px solid ${C.purple}` }}>
+                              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+                                    <span style={{ fontFamily: "'Playfair Display', serif", fontWeight: 700, fontSize: 16, color: C.dark }}>{med.name}</span>
+                                    <span style={{ background: `${C.purple}15`, color: C.purple, borderRadius: 6, padding: "2px 9px", fontSize: 11, fontWeight: 700 }}>{intervalLabel}</span>
+                                    {nextDue && <StatusBadge nextDue={nextDue} />}
+                                  </div>
+                                  {lastDate && <div style={{ fontSize: 12, color: C.muted, marginBottom: 10 }}>Last given: {fmt(lastDate)}{nextDue ? ` · Next due: ${fmt(nextDue)}` : ""}</div>}
+                                  {med.notes && <div style={{ fontSize: 12, color: C.dark, background: C.cream, borderRadius: 8, padding: "6px 10px", borderLeft: `3px solid ${C.muted}40`, marginBottom: 10 }}>{med.notes}</div>}
+                                  <button onClick={() => !givenToday && gaveMedToday(med.id)} disabled={givenToday}
+                                    style={{ padding: "8px 18px", borderRadius: 9, border: "none", background: givenToday ? `${C.sage}25` : C.amber, color: givenToday ? C.sage : "#FFF", fontSize: 13, fontWeight: 700, cursor: givenToday ? "default" : "pointer", fontFamily: "'DM Sans', sans-serif" }}>
+                                    {givenToday ? "✓ Given Today" : "💊 Gave it today"}
+                                  </button>
+                                </div>
+                                <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
+                                  <button onClick={() => { setMedForm({ name: med.name, intervalMonths: String(med.intervalMonths), startDate: med.startDate || "", notes: med.notes || "" }); setMedModal(med); }} style={{ background: `${C.amber}18`, border: "none", borderRadius: 7, padding: "5px 9px", fontSize: 13, cursor: "pointer", color: C.brown }}>✏️</button>
+                                  <button onClick={() => deleteMed(med.id)} style={{ background: "#FFE8E8", border: "none", borderRadius: 7, padding: "5px 9px", fontSize: 13, cursor: "pointer", color: "#C0392B" }}>🗑️</button>
+                                </div>
+                              </div>
+                              {(med.history||[]).length > 0 && (
+                                <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.muted}15` }}>
+                                  <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: 0.8, textTransform: "uppercase", marginBottom: 6 }}>History</div>
+                                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                                    {[...med.history].sort((a,b) => b.date.localeCompare(a.date)).map(h => (
+                                      <span key={h.id} style={{ background: `${C.purple}12`, color: C.purple, borderRadius: 6, padding: "3px 10px", fontSize: 12, fontWeight: 600 }}>{fmt(h.date)}</span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </>
+                    )}
+                    {onetimeMeds.length > 0 && (
+                      <>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8, marginTop: regularMeds.length > 0 ? 18 : 0 }}>📋 One-time / Prescribed</div>
+                        {onetimeMeds.map(med => {
+                          const today = localToday();
+                          const status = med.endDate && med.endDate < today ? "completed" : med.startDate > today ? "upcoming" : "active";
+                          const ss = status === "completed" ? { bg: `${C.sage}18`, color: C.sage, label: "✓ Completed" } : status === "upcoming" ? { bg: `${C.blue}15`, color: C.blue, label: "Upcoming" } : { bg: `${C.amber}18`, color: C.amber, label: "● Active" };
+                          const freqLabel = med.timesPerDay == 1 ? "Once daily" : med.timesPerDay == 2 ? "Twice daily" : "3× daily";
+                          return (
+                            <div key={med.id} style={{ background: "#FFF", borderRadius: 14, padding: "18px 20px", marginBottom: 12, boxShadow: "0 2px 8px rgba(61,32,16,0.06)", borderLeft: `4px solid ${C.blue}` }}>
+                              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+                                    <span style={{ fontFamily: "'Playfair Display', serif", fontWeight: 700, fontSize: 16, color: C.dark }}>{med.name}</span>
+                                    <span style={{ background: ss.bg, color: ss.color, borderRadius: 6, padding: "2px 9px", fontSize: 11, fontWeight: 700 }}>{ss.label}</span>
+                                    <span style={{ background: `${C.blue}12`, color: C.blue, borderRadius: 6, padding: "2px 9px", fontSize: 11, fontWeight: 600 }}>{freqLabel}</span>
+                                  </div>
+                                  <div style={{ fontSize: 12, color: C.muted, marginBottom: med.notes ? 8 : 0 }}>{fmt(med.startDate)}{med.endDate ? ` → ${fmt(med.endDate)}` : ""}</div>
+                                  {med.notes && <div style={{ fontSize: 12, color: C.dark, background: C.cream, borderRadius: 8, padding: "6px 10px", borderLeft: `3px solid ${C.muted}40`, marginTop: 6 }}>{med.notes}</div>}
+                                </div>
+                                <div style={{ display: "flex", gap: 5, flexShrink: 0 }}>
+                                  <button onClick={() => { setMedForm({ name: med.name, startDate: med.startDate, endDate: med.endDate || "", timesPerDay: String(med.timesPerDay), notes: med.notes || "" }); setMedModal(med); }} style={{ background: `${C.amber}18`, border: "none", borderRadius: 7, padding: "5px 9px", fontSize: 13, cursor: "pointer", color: C.brown }}>✏️</button>
+                                  <button onClick={() => deleteMed(med.id)} style={{ background: "#FFE8E8", border: "none", borderRadius: 7, padding: "5px 9px", fontSize: 13, cursor: "pointer", color: "#C0392B" }}>🗑️</button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </>
+                    )}
+                  </>
+                )}
               </>
             )}
             {view === "schedule" && (
@@ -1048,6 +1178,41 @@ export default function PawRecord() {
               <option value="36">3 years</option>
             </Sel>
             <Btn onClick={addCustomVaccine} style={{ width: "100%" }}>Add Vaccine</Btn>
+          </div>
+        </Modal>
+      )}
+      {medModal && (
+        <Modal
+          title={medModal === "add-regular" ? "Add Regular Medication" : medModal === "add-onetime" ? "Add One-time Medication" : `Edit — ${medModal.name}`}
+          onClose={() => setMedModal(null)}>
+          <Input label="Medication Name *" placeholder="e.g. NexGard, Bravecto, Apoquel" value={medForm.name} onChange={e => setMedForm(f => ({ ...f, name: e.target.value }))} />
+          {(medModal === "add-regular" || medModal?.type === "regular") ? (
+            <>
+              <Sel label="Give Every" value={medForm.intervalMonths} onChange={e => setMedForm(f => ({ ...f, intervalMonths: e.target.value }))}>
+                <option value="1">Monthly (every 1 month)</option>
+                <option value="3">Every 3 months</option>
+                <option value="6">Every 6 months</option>
+                <option value="12">Annually (every 12 months)</option>
+              </Sel>
+              <Input label="Start Date" type="date" value={medForm.startDate} onChange={e => setMedForm(f => ({ ...f, startDate: e.target.value }))} />
+            </>
+          ) : (
+            <>
+              <div style={{ display: "flex", gap: 10 }}>
+                <div style={{ flex: 1 }}><Input label="Start Date *" type="date" value={medForm.startDate} onChange={e => setMedForm(f => ({ ...f, startDate: e.target.value }))} /></div>
+                <div style={{ flex: 1 }}><Input label="End Date" type="date" value={medForm.endDate} onChange={e => setMedForm(f => ({ ...f, endDate: e.target.value }))} /></div>
+              </div>
+              <Sel label="Times Per Day" value={medForm.timesPerDay} onChange={e => setMedForm(f => ({ ...f, timesPerDay: e.target.value }))}>
+                <option value="1">Once daily</option>
+                <option value="2">Twice daily</option>
+                <option value="3">Three times daily</option>
+              </Sel>
+            </>
+          )}
+          <TA label="Notes (optional)" placeholder="ex) NexGard 25mg, prescribed by Dr. Kim" value={medForm.notes} onChange={e => setMedForm(f => ({ ...f, notes: e.target.value }))} />
+          <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
+            <Btn onClick={saveMed} style={{ flex: 1 }}>{medModal === "add-regular" || medModal === "add-onetime" ? "Add Medication" : "Save Changes"}</Btn>
+            <Btn variant="secondary" onClick={() => setMedModal(null)}>Cancel</Btn>
           </div>
         </Modal>
       )}
