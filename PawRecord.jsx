@@ -451,11 +451,18 @@ export default function PawRecord() {
   const [toast, setToast] = useState(null);
   const [notifStatus, setNotifStatus] = useState(() => notifPermission());
   const [view, setView] = useState("vaccines");
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
+  const [showPetDrawer, setShowPetDrawer] = useState(false);
 
   // ─── Run notification check on load ────────────────────────────────────────
   useEffect(() => {
     if (notifStatus === "granted") checkAndNotify(pets, history, visits);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const h = () => setIsMobile(window.innerWidth < 640);
+    window.addEventListener("resize", h);
+    return () => window.removeEventListener("resize", h);
+  }, []);
   const [filterType, setFilterType] = useState("All");
   const [showAddPet, setShowAddPet] = useState(false);
   const [logModal, setLogModal] = useState(null);
@@ -707,41 +714,52 @@ export default function PawRecord() {
         body { background: ${C.cream}; }
         ::-webkit-scrollbar { width: 5px; }
         ::-webkit-scrollbar-thumb { background: ${C.muted}50; border-radius: 3px; }
+        .pr-nav-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+        .pr-nav-tabs::-webkit-scrollbar { display: none; }
+        .pr-nav-tabs button { white-space: nowrap; flex-shrink: 0; }
       `}</style>
       <div style={{ minHeight: "100vh", background: C.cream, fontFamily: "'DM Sans', sans-serif", maxWidth: 960, margin: "0 auto" }}>
         {/* ── Top bar: brand + tools ── */}
-        <div style={{ background: C.brown, padding: "14px 22px 0", display: "flex", flexDirection: "column", gap: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingBottom: 12 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: 26 }}>🐾</span>
-              <div>
-                <div style={{ fontFamily: "'Playfair Display', serif", color: "#FFF", fontSize: 21, fontWeight: 700 }}>PawRecord</div>
-                <div style={{ color: C.muted, fontSize: 11 }}>Vaccine History & Health Tracker</div>
+        <div style={{ background: C.brown, padding: isMobile ? "10px 14px 0" : "14px 22px 0", display: "flex", flexDirection: "column", gap: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingBottom: 10, gap: 8 }}>
+            {/* Left: hamburger (mobile) + logo */}
+            <div style={{ display: "flex", alignItems: "center", gap: isMobile ? 8 : 10, minWidth: 0 }}>
+              {isMobile && (
+                <button onClick={() => setShowPetDrawer(true)} style={{ background: `${C.amber}30`, border: `1.5px solid ${C.amber}60`, borderRadius: 9, padding: "6px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, flexShrink: 0 }}>
+                  <span style={{ fontSize: 17 }}>{activePet?.photo || "🐾"}</span>
+                  <span style={{ color: "#FFF", fontSize: 11, fontWeight: 700, maxWidth: 55, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activePet?.name}</span>
+                  <span style={{ color: C.muted, fontSize: 15, lineHeight: 1 }}>☰</span>
+                </button>
+              )}
+              {!isMobile && <span style={{ fontSize: 26 }}>🐾</span>}
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontFamily: "'Playfair Display', serif", color: "#FFF", fontSize: isMobile ? 17 : 21, fontWeight: 700, whiteSpace: "nowrap" }}>PawRecord</div>
+                {!isMobile && <div style={{ color: C.muted, fontSize: 11 }}>Vaccine History & Health Tracker</div>}
               </div>
             </div>
-            {/* Tools: notifications + export/import */}
-            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            {/* Right: action buttons */}
+            <div style={{ display: "flex", gap: 5, alignItems: "center", flexShrink: 0 }}>
               {notifStatus !== "granted"
-                ? <button onClick={enableNotifications} style={{ background: notifStatus === "denied" ? "#C0392B" : C.amber, color: "#FFF", border: "none", borderRadius: 8, padding: "6px 13px", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
-                    {notifStatus === "denied" ? "🔕 Blocked" : "🔔 Enable Alerts"}
+                ? <button onClick={enableNotifications} style={{ background: notifStatus === "denied" ? "#C0392B" : C.amber, color: "#FFF", border: "none", borderRadius: 8, padding: isMobile ? "7px 10px" : "6px 13px", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
+                    {notifStatus === "denied" ? "🔕" : isMobile ? "🔔" : "🔔 Enable Alerts"}
                   </button>
-                : <button onClick={() => { checkAndNotify(pets, history, visits); sendNotif("🐾 PawRecord", "Notifications are working! You'll be alerted when vaccines are due.", "test-" + Date.now()); showToast("Test notification sent!"); }} style={{ background: C.sage, color: "#FFF", border: "none", borderRadius: 8, padding: "6px 13px", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>🔔 Alerts On</button>
+                : <button onClick={() => { checkAndNotify(pets, history, visits); sendNotif("🐾 PawRecord", "Notifications are working! You'll be alerted when vaccines are due.", "test-" + Date.now()); showToast("Test notification sent!"); }} style={{ background: C.sage, color: "#FFF", border: "none", borderRadius: 8, padding: isMobile ? "7px 10px" : "6px 13px", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>{isMobile ? "🔔" : "🔔 Alerts On"}</button>
               }
-              <button onClick={exportData} style={{ background: "transparent", color: C.muted, border: `1px solid ${C.muted}60`, borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>⬇ Export</button>
-              <label style={{ background: "transparent", color: C.muted, border: `1px solid ${C.muted}60`, borderRadius: 8, padding: "6px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
-                ⬆ Import<input type="file" accept=".json" onChange={importData} style={{ display: "none" }} />
+              <button onClick={exportData} style={{ background: "transparent", color: C.muted, border: `1px solid ${C.muted}60`, borderRadius: 8, padding: isMobile ? "7px 10px" : "6px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>{isMobile ? "⬇" : "⬇ Export"}</button>
+              <label style={{ background: "transparent", color: C.muted, border: `1px solid ${C.muted}60`, borderRadius: 8, padding: isMobile ? "7px 10px" : "6px 12px", fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
+                {isMobile ? "⬆" : "⬆ Import"}<input type="file" accept=".json" onChange={importData} style={{ display: "none" }} />
               </label>
             </div>
           </div>
           {/* ── Nav tabs ── */}
-          <div style={{ display: "flex", gap: 2 }}>
+          <div className="pr-nav-tabs" style={{ display: "flex", gap: 2 }}>
             {[["vaccines","💉 Vaccines"],["visits","🏥 Visits"],["medications","💊 Meds"],["schedule","📅 Schedule"],["summary","📊 Summary"]].map(([v, lbl]) => (
-              <button key={v} onClick={() => setView(v)} style={{ background: view === v ? C.cream : "transparent", color: view === v ? C.brown : C.muted, border: "none", borderRadius: "8px 8px 0 0", padding: "8px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>{lbl}</button>
+              <button key={v} onClick={() => setView(v)} style={{ background: view === v ? C.cream : "transparent", color: view === v ? C.brown : C.muted, border: "none", borderRadius: "8px 8px 0 0", padding: isMobile ? "8px 12px" : "8px 16px", fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>{lbl}</button>
             ))}
           </div>
         </div>
         <div style={{ display: "flex" }}>
-          <div style={{ width: 185, minHeight: "calc(100vh - 65px)", background: "#FFF", borderRight: `1px solid ${C.muted}18`, padding: "14px 10px", flexShrink: 0 }}>
+          <div style={{ width: 185, minHeight: "calc(100vh - 65px)", background: "#FFF", borderRight: `1px solid ${C.muted}18`, padding: "14px 10px", flexShrink: 0, display: isMobile ? "none" : "block" }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: C.muted, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8, paddingLeft: 4 }}>My Pets</div>
             {pets.map(pet => (
               <div key={pet.id} style={{ position: "relative", marginBottom: 3 }}
@@ -760,7 +778,7 @@ export default function PawRecord() {
             ))}
             <button onClick={() => setShowAddPet(true)} style={{ width: "100%", padding: "8px", borderRadius: 9, border: `1.5px dashed ${C.muted}60`, background: "transparent", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", marginTop: 6 }}>+ Add Pet</button>
           </div>
-          <div style={{ flex: 1, padding: "22px 24px", overflowY: "auto" }}>
+          <div style={{ flex: 1, padding: isMobile ? "16px 14px" : "22px 24px", overflowY: "auto", minWidth: 0 }}>
             {activePet && (
               <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 20 }}>
                 <div style={{ width: 50, height: 50, borderRadius: 13, background: `${activePet.color}20`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26 }}>{activePet.photo}</div>
@@ -1032,6 +1050,32 @@ export default function PawRecord() {
           </div>
         </div>
       </div>
+      {/* ── Mobile Pet Drawer ── */}
+      {showPetDrawer && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 300, display: "flex" }} onClick={() => setShowPetDrawer(false)}>
+          <div onClick={e => e.stopPropagation()} style={{ width: 230, background: "#FFF", height: "100%", padding: "20px 12px", overflowY: "auto", boxShadow: "6px 0 24px rgba(61,32,16,0.22)", display: "flex", flexDirection: "column" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: C.muted, letterSpacing: 1, textTransform: "uppercase" }}>My Pets</div>
+              <button onClick={() => setShowPetDrawer(false)} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: C.muted, lineHeight: 1 }}>×</button>
+            </div>
+            {pets.map(pet => (
+              <div key={pet.id} style={{ position: "relative", marginBottom: 3 }}>
+                <div onClick={() => { setActivePet(pet); setShowPetDrawer(false); }} style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 8px", paddingRight: 32, borderRadius: 10, cursor: "pointer", background: activePet?.id === pet.id ? `${pet.color}18` : "transparent", borderLeft: activePet?.id === pet.id ? `3px solid ${pet.color}` : "3px solid transparent" }}>
+                  <span style={{ fontSize: 24 }}>{pet.photo}</span>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 14, color: C.dark }}>{pet.name}</div>
+                    <div style={{ fontSize: 11, color: C.muted }}>{pet.species} · {getAge(pet.dob)}</div>
+                  </div>
+                </div>
+                <button onClick={e => { e.stopPropagation(); if (window.confirm(`Remove ${pet.name}?`)) { removePet(pet.id); setShowPetDrawer(false); } }}
+                  style={{ position: "absolute", top: 8, right: 4, background: "#FFE8E8", border: "none", borderRadius: 6, width: 24, height: 24, fontSize: 14, color: "#C0392B", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>×</button>
+              </div>
+            ))}
+            <button onClick={() => { setShowPetDrawer(false); setShowAddPet(true); }} style={{ width: "100%", padding: "9px", borderRadius: 9, border: `1.5px dashed ${C.muted}60`, background: "transparent", color: C.muted, fontSize: 12, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", marginTop: 8 }}>+ Add Pet</button>
+          </div>
+          <div style={{ flex: 1, background: "rgba(61,32,16,0.45)" }} />
+        </div>
+      )}
       {logModal && (
         <Modal title={`Log Dose — ${logModal.name}`} onClose={() => setLogModal(null)}>
           <div style={{ background: `${logModal.color}12`, borderRadius: 10, padding: "10px 14px", marginBottom: 14, fontSize: 13, color: C.brown }}>
