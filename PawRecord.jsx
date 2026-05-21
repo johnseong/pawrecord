@@ -941,47 +941,33 @@ export default function PawRecord() {
             )}
             {view === "schedule" && (
               <>
-                <h3 style={{ fontFamily: "'Playfair Display', serif", color: C.dark, fontSize: 18, marginBottom: 14 }}>Recommended Schedule — {activePet?.species}</h3>
-                <div style={{ background: "#FFF", borderRadius: 14, overflow: "hidden", boxShadow: "0 2px 8px rgba(61,32,16,0.06)" }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-                    <thead>
-                      <tr style={{ background: C.brown, color: "#FFF" }}>
-                        {["Vaccine","Type","Initial Series","Booster Cycle","Status"].map(h => (
-                          <th key={h} style={{ padding: "11px 14px", textAlign: "left", fontWeight: 600, fontSize: 11, letterSpacing: 0.5, textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {vaccines.map((v, i) => {
-                        const ph = petHistory[v.name] || [];
-                        const last = ph[ph.length - 1];
-                        const initial = v.doses.filter(d => !d.repeat);
-                        return (
-                          <tr key={v.name} style={{ background: i % 2 === 0 ? "#FFF" : `${C.cream}90`, borderBottom: `1px solid ${C.muted}15` }}>
-                            <td style={{ padding: "12px 14px" }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                <div style={{ width: 8, height: 8, borderRadius: "50%", background: v.color, flexShrink: 0 }} />
-                                <span style={{ fontWeight: 600, color: C.dark }}>{v.name}</span>
-                              </div>
-                              <div style={{ fontSize: 11, color: C.muted, marginTop: 2, paddingLeft: 16 }}>{v.description}</div>
-                            </td>
-                            <td style={{ padding: "12px 14px" }}>
-                              <span style={{ fontSize: 11, fontWeight: 700, background: v.type.includes("Core") ? `${C.coral}18` : `${C.sage}18`, color: v.type.includes("Core") ? C.coral : C.sage, borderRadius: 6, padding: "2px 8px" }}>{v.type}</span>
-                            </td>
-                            <td style={{ padding: "12px 14px", color: C.muted, fontSize: 12 }}>
-                              {initial.map((d, j) => (
-                                <div key={j} style={{ marginBottom: 2 }}><span style={{ color: C.brown, fontWeight: 600 }}>#{j+1}</span> {d.label}{d.weekMin && <span style={{ color: C.muted }}> (wk {d.weekMin}{d.weekMax ? `–${d.weekMax}` : "+"})</span>}</div>
-                              ))}
-                            </td>
-                            <td style={{ padding: "12px 14px", color: C.dark, fontSize: 12, fontWeight: 600 }}>Every {v.boosterIntervalMonths >= 36 ? "3 years" : v.boosterIntervalMonths >= 12 ? "year" : `${v.boosterIntervalMonths} mo`}</td>
-                            <td style={{ padding: "12px 14px" }}>
-                              {last?.nextDue ? <div><StatusBadge nextDue={last.nextDue} /><div style={{ fontSize: 10, color: C.muted, marginTop: 4 }}>Due {fmt(last.nextDue)}</div></div> : <span style={{ fontSize: 11, color: C.muted }}>Not started</span>}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
+                <h3 style={{ fontFamily: "'Playfair Display', serif", color: C.dark, fontSize: 18, marginBottom: 14 }}>Vaccine Schedule — {activePet?.species}</h3>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {vaccines.map(v => {
+                    const ph = petHistory[v.name] || [];
+                    const last = ph[ph.length - 1];
+                    const boosterLabel = v.boosterIntervalMonths >= 36 ? "Every 3 years" : v.boosterIntervalMonths >= 12 ? "Every year" : `Every ${v.boosterIntervalMonths} mo`;
+                    const isCore = v.type.includes("Core");
+                    return (
+                      <div key={v.name} style={{ background: "#FFF", borderRadius: 12, padding: "14px 16px", boxShadow: "0 2px 6px rgba(61,32,16,0.06)", borderLeft: `4px solid ${v.color}`, display: "flex", alignItems: "center", gap: 14 }}>
+                        <div style={{ width: 36, height: 36, borderRadius: 10, background: `${v.color}18`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          <div style={{ width: 10, height: 10, borderRadius: "50%", background: v.color }} />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 7, flexWrap: "wrap", marginBottom: 3 }}>
+                            <span style={{ fontWeight: 700, fontSize: 14, color: C.dark }}>{v.name}</span>
+                            <span style={{ fontSize: 10, fontWeight: 700, background: isCore ? `${C.coral}18` : `${C.sage}18`, color: isCore ? C.coral : C.sage, borderRadius: 5, padding: "1px 7px" }}>{v.type}</span>
+                          </div>
+                          <div style={{ fontSize: 12, color: C.muted }}>{boosterLabel}{last?.nextDue ? ` · Next: ${fmt(last.nextDue)}` : ""}</div>
+                        </div>
+                        <div style={{ flexShrink: 0 }}>
+                          {last?.nextDue
+                            ? <StatusBadge nextDue={last.nextDue} />
+                            : <span style={{ fontSize: 11, color: C.muted, fontStyle: "italic" }}>Not started</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </>
             )}
